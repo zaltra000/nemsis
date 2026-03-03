@@ -36,9 +36,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   xterm: ^4.0.0
   google_fonts: ^8.0.1
-  web_socket_channel: ^3.0.3
   provider: ^6.1.5+1
   animate_do: ^4.2.0
+  flutter_pty: ^0.4.2
 
 dev_dependencies:
   flutter_test:
