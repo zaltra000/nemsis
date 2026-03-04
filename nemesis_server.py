@@ -13,7 +13,7 @@ import shlex
 from datetime import datetime
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# NEMESIS C2 SERVER v7.7 — Nuclear Arsenal Backend
+# NEMESIS C2 SERVER v8.0 — APOTHEOSIS CORE
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class NemesisC2:
@@ -196,20 +196,39 @@ class NemesisC2:
             'log_entry': entry,
         }))
 
-    # ─── Operations Log Query ────────────────────────────────────────────────
-    async def handle_ops_query(self, websocket, payload):
-        limit = payload.get('limit', 50)
-        module_filter = payload.get('module', None)
-        
-        filtered = self.op_log
-        if module_filter:
-            filtered = [op for op in filtered if op['module'] == module_filter]
-        
-        await websocket.send(json.dumps({
-            'type': 'ops_log',
-            'entries': filtered[-limit:],
-            'total': len(filtered),
-        }))
+    # ─── Intelligence Handlers ───────────────────────────────────────────────
+    async def handle_intel(self, websocket, payload):
+        target = payload.get('target', 'global')
+        findings = payload.get('findings', [])
+        print(f"\033[1;36m[INTEL] REPORT → target={target} count={len(findings)}\033[0m")
+        self.log_op('INTEL', 'report_received', 'success', f"Findings for {target}")
+        await websocket.send(json.dumps({'type': 'ack', 'source': 'INTEL_HANDLER'}))
+
+    async def handle_humint(self, websocket, payload):
+        target = payload.get('target', 'unknown')
+        print(f"\033[1;36m[HUMINT] PROFILE → target={target}\033[0m")
+        self.log_op('HUMINT', 'profile_archived', 'success', f"Profile for {target}")
+
+    # ─── Defense Handlers ────────────────────────────────────────────────────
+    async def handle_defense_alert(self, websocket, payload):
+        source = payload.get('source', 'SHIELD')
+        msg = payload.get('message', '')
+        severity = payload.get('severity', 0)
+        print(f"\033[1;33m[DEFENSE] ALERT → [{source}] {msg} (SEV: {severity})\033[0m")
+        self.log_op('DEFENSE', f'alert_{source.lower()}', 'warning', msg)
+
+    # ─── CORTEX AI Handlers ──────────────────────────────────────────────────
+    async def handle_cortex_sync(self, websocket, payload):
+        chain = payload.get('reasoning_chain', [])
+        print(f"\033[1;34m[CORTEX] SYNC → steps={len(chain)}\033[0m")
+        # Archive reasoning for later analysis
+        self.log_op('CORTEX', 'reasoning_sync', 'success')
+
+    # ─── Orchestrator Handlers ───────────────────────────────────────────────
+    async def handle_heartbeat(self, websocket, payload):
+        uptime = payload.get('uptime', 0)
+        decisions = payload.get('decisions', 0)
+        print(f"\033[1;32m[ORCHESTRATOR] HEARTBEAT → uptime={uptime}s decisions={decisions}\033[0m")
 
     # ─── Main Terminal Handler ───────────────────────────────────────────────
     async def terminal_handler(self, websocket):
@@ -269,15 +288,25 @@ class NemesisC2:
                         await self.handle_sabotage(websocket, payload)
                     elif msg_type == 'ops_query':
                         await self.handle_ops_query(websocket, payload)
+                    elif msg_type == 'intel_report':
+                        await self.handle_intel(websocket, payload)
+                    elif msg_type == 'humint_profile':
+                        await self.handle_humint(websocket, payload)
+                    elif msg_type == 'defense_alert':
+                        await self.handle_defense_alert(websocket, payload)
+                    elif msg_type == 'cortex_sync':
+                        await self.handle_cortex_sync(websocket, payload)
+                    elif msg_type == 'heartbeat':
+                        await self.handle_heartbeat(websocket, payload)
             except:
                 pass
 
 async def main():
     agent = NemesisC2()
     print("\033[1;32m╔══════════════════════════════════════════════╗\033[0m")
-    print("\033[1;32m║     NEMESIS C2 SERVER v7.7 — NUCLEAR CORE   ║\033[0m")
+    print("\033[1;32m║     NEMESIS C2 SERVER v8.0 — APOTHEOSIS     ║\033[0m")
     print("\033[1;32m║     PORT: 8080 | STATUS: ONLINE              ║\033[0m")
-    print("\033[1;32m║     MODULES: APEX | GHOST | BLACKOUT | SIPHON║\033[0m")
+    print("\033[1;32m║     MODES: OFFENSIVE | DEFENSIVE | INTEL     ║\033[0m")
     print("\033[1;32m╚══════════════════════════════════════════════╝\033[0m")
     async with websockets.serve(agent.terminal_handler, "0.0.0.0", 8080):
         await asyncio.Future()

@@ -5,6 +5,7 @@ import '../ai/knowledge_base.dart';
 import '../ai/reasoning_engine.dart';
 import '../ai/anomaly_detector.dart';
 import 'event_bus.dart';
+import 'c2_bridge_service.dart';
 
 /// ═══════════════════════════════════════════════════════════════════════════
 /// ORCHESTRATOR — Autonomous Background Command & Control
@@ -21,6 +22,7 @@ class OrchestratorService extends ChangeNotifier {
   final ReasoningEngine reasoning;
   final AnomalyDetector anomalyDetector;
   final EventBus eventBus;
+  final C2BridgeService c2;
 
   OrchestratorState _state = OrchestratorState.offline;
   Timer? _heartbeatTimer;
@@ -43,6 +45,7 @@ class OrchestratorService extends ChangeNotifier {
     required this.reasoning,
     required this.anomalyDetector,
     required this.eventBus,
+    required this.c2,
   });
 
   /// Initialize and start the Orchestrator
@@ -165,7 +168,15 @@ class OrchestratorService extends ChangeNotifier {
       }
 
       // Notify every 5 seconds for UI updates
-      if (_uptime % 5 == 0) notifyListeners();
+      if (_uptime % 5 == 0) {
+        notifyListeners();
+
+        // Sync to C2 if connected
+        if (c2.state == C2State.connected) {
+          c2.syncHeartbeat(this);
+          c2.syncCortex(cortex);
+        }
+      }
     });
   }
 

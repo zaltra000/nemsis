@@ -44,12 +44,15 @@ void main() {
         ChangeNotifierProvider(create: (_) => TerminalService()),
         ChangeNotifierProvider(create: (_) => SystemMonitorService()),
         ChangeNotifierProvider(create: (_) => WarfareService()),
-        ChangeNotifierProvider(create: (_) => C2BridgeService()),
-        // ─── V8 CORTEX: AI Engine ──────────────────────────────
-        ChangeNotifierProvider(create: (_) => CortexEngine()),
-        ChangeNotifierProvider(create: (_) => KnowledgeBase()),
-        ChangeNotifierProvider(create: (_) => AnomalyDetector()),
         ChangeNotifierProvider(create: (_) => EventBus()),
+        ChangeNotifierProxyProvider<EventBus, C2BridgeService>(
+          create: (context) => C2BridgeService(
+            eventBus: Provider.of<EventBus>(context, listen: false),
+          ),
+          update: (context, bus, c2) => c2 ?? C2BridgeService(eventBus: bus),
+        ),
+        // ─── V8 CORTEX: AI Engine ──────────────────────────────
+        ChangeNotifierProvider(create: (_) => AnomalyDetector()),
         // ─── V8 Reasoning (depends on Cortex + KB) ─────────────
         ChangeNotifierProxyProvider2<
           CortexEngine,
@@ -63,11 +66,12 @@ void main() {
           update: (_, cortex, kb, prev) => prev!,
         ),
         // ─── V8 Orchestrator (depends on all AI modules) ───────
-        ChangeNotifierProxyProvider4<
+        ChangeNotifierProxyProvider5<
           CortexEngine,
           KnowledgeBase,
           ReasoningEngine,
           AnomalyDetector,
+          C2BridgeService,
           OrchestratorService
         >(
           create: (ctx) => OrchestratorService(
@@ -76,8 +80,9 @@ void main() {
             reasoning: ctx.read<ReasoningEngine>(),
             anomalyDetector: ctx.read<AnomalyDetector>(),
             eventBus: ctx.read<EventBus>(),
+            c2: ctx.read<C2BridgeService>(),
           ),
-          update: (_, __, ___, ____, _____, prev) => prev!,
+          update: (_, __, ___, ____, _____, ______, prev) => prev!,
         ),
         // ─── V8 Defensive Modules ──────────────────────────────
         ChangeNotifierProxyProvider<EventBus, ShieldService>(

@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'event_bus.dart';
+import '../ai/cortex_engine.dart';
+import 'orchestrator_service.dart';
 
 /// Connection state for the C2 bridge
 enum C2State { disconnected, connecting, connected, error }
@@ -14,6 +17,11 @@ class C2BridgeService extends ChangeNotifier {
   final List<String> _log = [];
   final StreamController<Map<String, dynamic>> _messageController =
       StreamController.broadcast();
+  StreamSubscription? _eventSub;
+
+  final EventBus _eventBus;
+
+  C2BridgeService({required EventBus eventBus}) : _eventBus = eventBus;
 
   C2State get state => _state;
   String get serverUrl => _serverUrl;
@@ -40,8 +48,8 @@ class C2BridgeService extends ChangeNotifier {
             final msg = jsonDecode(data as String) as Map<String, dynamic>;
             _messageController.add(msg);
             _addLog('[C2] << ${msg['type'] ?? 'unknown'}');
-          } catch (_) {
-            _addLog('[C2] << RAW: $data');
+          } catch (e) {
+            _addLog('[C2] JSON ERROR: $e');
           }
         },
         onDone: () {
@@ -55,6 +63,9 @@ class C2BridgeService extends ChangeNotifier {
           notifyListeners();
         },
       );
+
+      // Initialize autonomous event syncing after connection
+      _initEventSync();
     } catch (e) {
       _state = C2State.error;
       _addLog('[C2] FAILED: $e');
@@ -120,9 +131,46 @@ class C2BridgeService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Autonomous Event Syncing Loop
+  void _initEventSync() {
+    _eventSub?.cancel();
+    _eventSub = _eventBus.stream.listen((event) {
+      if (_state != C2State.connected) return;
+
+      // Auto-report significant events
+      if (event.severity >= 30) {
+        sendPayload({
+          'type': 'defense_alert',
+          'source': event.source,
+          'message': event.message,
+          'severity': event.severity,
+        });
+      }
+    });
+  }
+
+  /// Synchronize CORTEX AI thinking to C2
+  void syncCortex(CortexEngine cortex) {
+    sendPayload({
+      'type': 'cortex_sync',
+      'reasoning_chain': cortex.reasoningChain,
+      'confidence': cortex.confidence,
+    });
+  }
+
+  /// Synchronize Orchestrator status
+  void syncHeartbeat(OrchestratorService orc) {
+    sendPayload({
+      'type': 'heartbeat',
+      'uptime': orc.uptime,
+      'decisions': orc.decisionsCount,
+    });
+  }
+
   @override
   void dispose() {
     _socket?.close();
+    _eventSub?.cancel();
     _messageController.close();
     super.dispose();
   }
