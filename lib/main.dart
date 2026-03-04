@@ -12,6 +12,18 @@ import 'services/warfare_service.dart';
 import 'services/c2_bridge_service.dart';
 import 'screens/nuclear_arsenal_screen.dart';
 import 'screens/operations_log_screen.dart';
+// ─── V8 APOTHEOSIS Imports ──────────────────────────────────────────────────
+import 'ai/cortex_engine.dart';
+import 'ai/knowledge_base.dart';
+import 'ai/reasoning_engine.dart';
+import 'ai/anomaly_detector.dart';
+import 'services/event_bus.dart';
+import 'services/orchestrator_service.dart';
+import 'services/defense_services.dart';
+import 'services/intel_services.dart';
+import 'screens/cortex_screen.dart';
+import 'screens/defense_screen.dart';
+import 'screens/intel_screen.dart';
 
 // ─── Color Palette ───────────────────────────────────────────────────────────
 const kNeonGreen = Color(0xFF00FF41);
@@ -28,10 +40,71 @@ void main() {
   runApp(
     MultiProvider(
       providers: [
+        // ─── V7 Core Services ───────────────────────────────────
         ChangeNotifierProvider(create: (_) => TerminalService()),
         ChangeNotifierProvider(create: (_) => SystemMonitorService()),
         ChangeNotifierProvider(create: (_) => WarfareService()),
         ChangeNotifierProvider(create: (_) => C2BridgeService()),
+        // ─── V8 CORTEX: AI Engine ──────────────────────────────
+        ChangeNotifierProvider(create: (_) => CortexEngine()),
+        ChangeNotifierProvider(create: (_) => KnowledgeBase()),
+        ChangeNotifierProvider(create: (_) => AnomalyDetector()),
+        ChangeNotifierProvider(create: (_) => EventBus()),
+        // ─── V8 Reasoning (depends on Cortex + KB) ─────────────
+        ChangeNotifierProxyProvider2<
+          CortexEngine,
+          KnowledgeBase,
+          ReasoningEngine
+        >(
+          create: (ctx) => ReasoningEngine(
+            cortex: ctx.read<CortexEngine>(),
+            knowledgeBase: ctx.read<KnowledgeBase>(),
+          ),
+          update: (_, cortex, kb, prev) => prev!,
+        ),
+        // ─── V8 Orchestrator (depends on all AI modules) ───────
+        ChangeNotifierProxyProvider4<
+          CortexEngine,
+          KnowledgeBase,
+          ReasoningEngine,
+          AnomalyDetector,
+          OrchestratorService
+        >(
+          create: (ctx) => OrchestratorService(
+            cortex: ctx.read<CortexEngine>(),
+            knowledgeBase: ctx.read<KnowledgeBase>(),
+            reasoning: ctx.read<ReasoningEngine>(),
+            anomalyDetector: ctx.read<AnomalyDetector>(),
+            eventBus: ctx.read<EventBus>(),
+          ),
+          update: (_, __, ___, ____, _____, prev) => prev!,
+        ),
+        // ─── V8 Defensive Modules ──────────────────────────────
+        ChangeNotifierProxyProvider<EventBus, ShieldService>(
+          create: (ctx) => ShieldService(eventBus: ctx.read<EventBus>()),
+          update: (_, __, prev) => prev!,
+        ),
+        ChangeNotifierProxyProvider<EventBus, CloakService>(
+          create: (ctx) => CloakService(eventBus: ctx.read<EventBus>()),
+          update: (_, __, prev) => prev!,
+        ),
+        ChangeNotifierProxyProvider<EventBus, PhantomService>(
+          create: (ctx) => PhantomService(eventBus: ctx.read<EventBus>()),
+          update: (_, __, prev) => prev!,
+        ),
+        // ─── V8 Intelligence Modules ───────────────────────────
+        ChangeNotifierProxyProvider<EventBus, SigintService>(
+          create: (ctx) => SigintService(eventBus: ctx.read<EventBus>()),
+          update: (_, __, prev) => prev!,
+        ),
+        ChangeNotifierProxyProvider<EventBus, OsintService>(
+          create: (ctx) => OsintService(eventBus: ctx.read<EventBus>()),
+          update: (_, __, prev) => prev!,
+        ),
+        ChangeNotifierProxyProvider<EventBus, HumintService>(
+          create: (ctx) => HumintService(eventBus: ctx.read<EventBus>()),
+          update: (_, __, prev) => prev!,
+        ),
       ],
       child: const NemesisApp(),
     ),
@@ -44,7 +117,7 @@ class NemesisApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'NEMESIS CORE',
+      title: 'NEMESIS V8 APOTHEOSIS',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: kDeepBlack,
@@ -71,13 +144,23 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   late final AnimationController _glowCtrl;
   late final Animation<double> _glowAnim;
 
-  final _labels = ['TERM', 'STATS', 'ARSENAL', 'OPS', 'QUICK'];
+  final _labels = [
+    'TERM',
+    'CORTEX',
+    'ARSENAL',
+    'DEFENSE',
+    'INTEL',
+    'OPS',
+    'STATS',
+  ];
   final _icons = [
     Icons.terminal,
-    Icons.monitor_heart_outlined,
+    Icons.psychology,
     Icons.rocket_launch,
+    Icons.shield,
+    Icons.radar,
     Icons.history,
-    Icons.grid_view_rounded,
+    Icons.monitor_heart_outlined,
   ];
 
   @override
@@ -92,6 +175,12 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       begin: 0.3,
       end: 1.0,
     ).animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
+
+    // ─── V8: Initialize Orchestrator after build ──────────────
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final orch = Provider.of<OrchestratorService>(context, listen: false);
+      orch.initialize();
+    });
   }
 
   @override
@@ -187,7 +276,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        'v7.7',
+                        'v8.0',
                         style: GoogleFonts.firaCode(
                           fontSize: 10,
                           color: kNeonGreen.withAlpha(180),
@@ -205,10 +294,12 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
               index: _index,
               children: const [
                 TerminalScreen(),
-                DashboardScreen(),
+                CortexScreen(),
                 NuclearArsenalScreen(),
+                DefenseScreen(),
+                IntelScreen(),
                 OperationsLogScreen(),
-                ArsenalScreen(),
+                DashboardScreen(),
               ],
             ),
           ),
@@ -218,10 +309,10 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
               color: const Color(0xFF080808),
               border: Border(top: BorderSide(color: kNeonGreen.withAlpha(40))),
             ),
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: List.generate(5, (i) => _navItem(i)),
+              children: List.generate(7, (i) => _navItem(i)),
             ),
           ),
         ],
@@ -235,7 +326,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       onTap: () => setState(() => _index = i),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: selected ? kNeonGreen.withAlpha(15) : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
